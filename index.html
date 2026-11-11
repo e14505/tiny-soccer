@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>1v1 Soccer Showdown</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101a25;color:white;font-family:system-ui,sans-serif;display:flex;justify-content:center;padding:20px}
+#game{width:min(900px,100%);display:flex;flex-direction:column;gap:12px}
+.pitch{background:#237c43;border:3px solid #e7f4e9;border-radius:12px;overflow:hidden}
+canvas{display:block;width:100%;height:auto;touch-action:none}
+.hud{background:#142b22;border:1px solid #52715d;border-radius:10px;padding:9px;text-align:center;min-width:110px}
+button{background:#263d58;color:white;border:1px solid #71849b;border-radius:12px;padding:12px 15px;font-weight:800;font-size:15px;touch-action:none;user-select:none;cursor:pointer}
+button:active{background:#3975a9;transform:scale(.97)}
+.actions{display:flex;gap:10px;flex:1}
+.action{background:#1765b6;flex:1;min-height:55px}
+.tackle{background:#a34a29}
+.move{width:48px;height:45px;padding:5px}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:center}
+.dpad{display:grid;grid-template-columns:repeat(3,48px);gap:4px;justify-content:center}
+@media(max-width:520px){body{padding:10px}.controls{grid-template-columns:1fr 1fr}.hud{min-width:0}}
+.small{font-size:12px;color:#cbd5e1;text-align:center}
+</style>
+</head>
+<body>
+<main id="game">
+ <div style="display:flex;justify-content:space-between;gap:10px">
+  <div class="hud" style="flex:1"><div style="font-size:12px;color:#bbf7d0">YOU · BLUE</div><div id="score" style="font-size:26px;font-weight:900">0 - 0</div><div style="font-size:12px;color:#bbf7d0">RED · CPU</div></div>
+  <div class="hud"><div style="font-size:12px;color:#bbf7d0">MATCH TIME</div><div id="time" style="font-size:22px;font-weight:800">90</div></div>
+ </div>
+ <div class="pitch"><canvas id="field" width="800" height="500" aria-label="Top-down one versus one soccer game"></canvas></div>
+ <div style="display:flex;justify-content:space-between;gap:10px;font-size:14px"><span id="message">Kick off! Get the ball!</span><span id="status">READY</span></div>
+ <div class="controls">
+  <div><div class="small" style="font-weight:bold;margin-bottom:5px">MOVE</div><div class="dpad">
+   <span></span><button class="move" data-dir="up">▲</button><span></span>
+   <button class="move" data-dir="left">◀</button><button class="move" data-dir="down">▼</button><button class="move" data-dir="right">▶</button>
+  </div></div>
+  <div class="actions" style="flex-direction:column"><button class="action" id="shoot">⚽ SHOOT</button><button class="action tackle" id="tackle">↗ SLIDE TACKLE</button></div>
+ </div>
+ <div class="small">Keyboard: WASD / Arrow keys to move · Space to shoot · Shift to slide tackle</div>
+ <div class="actions"><button id="start" style="flex:1">▶ START / RESTART</button><button id="pause" style="flex:1">Ⅱ PAUSE</button></div>
+ <div class="small">Beat the red player and score in their goal. The opponent actively chases and challenges for the ball.</div>
+</main>
+<script>
+(()=>{
+const root=document.getElementById('game'),c=document.getElementById('field'),ctx=c.getContext('2d');
+const W=800,H=500;let keys={},running=false,over=false,paused=false,time=90,score=[0,0],last=0,clock=0;
+const make=(x,y)=>({x,y,vx:0,vy:0,r:19,face:0,slide:0,cool:0});
+let p=make(220,250),e=make(580,250),b={x:400,y:250,vx:0,vy:0,r:10,owner:null};
+const el=id=>document.getElementById(id),clamp=(v,a,z)=>Math.max(a,Math.min(z,v)),dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+function resetPositions(){p=make(220,250);e=make(580,250);b={x:400,y:250,vx:0,vy:0,r:10,owner:null}}
+function msg(t){el('message').textContent=t}
+function hud(){el('score').textContent=score[0]+' - '+score[1];el('time').textContent=Math.ceil(time)}
+function start(){score=[0,0];time=90;over=false;paused=false;running=true;clock=0;resetPositions();msg('Kick off! Get the ball!');hud();el('status').textContent='PLAYING'}
+function goal(who){score[who]++;hud();msg(who===0?'GOOOAL! You scored!':'The opponent scored!');resetPositions();if(score[who]>=5){over=true;running=false;msg(who===0?'YOU WIN! Amazing goal scoring!':'RED WINS! Try again!');el('status').textContent='FULL TIME'}}
+function shoot(who){
+ if(!running||paused||over)return;let a=who===0?p:e,target=who===0?800:0;
+ if(a.cool>0)return;if(dist(a,b)>48&&b.owner!==who){if(who===0)msg('Get closer to the ball!');return}
+ let dx=target-a.x,dy=250-a.y,L=Math.hypot(dx,dy)||1;b.owner=null;b.x=a.x+dx/L*24;b.y=a.y+dy/L*24;
+ b.vx=dx/L*10.8;b.vy=dy/L*10.8+(Math.random()-.5)*1.2;a.cool=30;if(who===0)msg('SHOOOT!');else msg('Opponent shoots!');
+}
+function tackle(){if(!running||paused||p.cool>0)return;p.slide=17;p.cool=40;if(dist(p,e)<52){let dx=e.x-p.x,dy=e.y-p.y,L=Math.hypot(dx,dy)||1;if(dist(p,b)<67||b.owner===1){b.owner=null;b.x=e.x+dx/L*25;b.y=e.y+dy/L*25;b.vx=dx/L*7;b.vy=dy/L*7;msg('Great tackle! Ball stolen!')}}}
+function controls(dt){
+ let x=(keys.right||keys.d||keys.arrowright?1:0)-(keys.left||keys.a||keys.arrowleft?1:0);
+ let y=(keys.down||keys.s||keys.arrowdown?1:0)-(keys.up||keys.w||keys.arrowup?1:0),l=Math.hypot(x,y)||1;
+ if(x||y){p.vx+=x/l*.7*dt;p.vy+=y/l*.7*dt;p.face=Math.atan2(y,x)}
+ let speed=p.slide>0?7.5:4.2;p.vx*=Math.pow(.84,dt);p.vy*=Math.pow(.84,dt);
+ let v=Math.hypot(p.vx,p.vy);if(v>speed){p.vx*=speed/v;p.vy*=speed/v}
+ p.x=clamp(p.x+p.vx*dt,30,770);p.y=clamp(p.y+p.vy*dt,30,470);
+ if(p.slide>0)p.slide-=dt;if(p.cool>0)p.cool-=dt;
+}
+function opponent(dt){
+ let target=b.owner===1?{x:155,y:250}:b,dx=target.x-e.x,dy=target.y-e.y,L=Math.hypot(dx,dy)||1,speed=b.owner===1?2.8:3.45;
+ e.vx+=(dx/L*speed-e.vx)*.11*dt;e.vy+=(dy/L*speed-e.vy)*.11*dt;
+ e.x=clamp(e.x+e.vx*dt,30,770);e.y=clamp(e.y+e.vy*dt,30,470);e.face=Math.atan2(e.vy,e.vx);if(e.cool>0)e.cool-=dt;
+ if(dist(e,b)<31&&b.owner!==0&&b.owner!==1){b.owner=1;msg('Red player has the ball!')}
+ if(b.owner===0&&dist(e,p)<42&&e.cool<=0&&Math.random()<.045*dt){b.owner=1;e.cool=40;msg('Red steals the ball!')}
+ if(b.owner===1&&e.x<340&&e.cool<=0)shoot(1);
+}
+function physics(dt){
+ if(b.owner===0){b.x=p.x+Math.cos(p.face)*24;b.y=p.y+Math.sin(p.face)*24}
+ else if(b.owner===1){b.x=e.x+Math.cos(e.face)*24;b.y=e.y+Math.sin(e.face)*24}
+ else{
+ b.x+=b.vx*dt;b.y+=b.vy*dt;b.vx*=Math.pow(.985,dt);b.vy*=Math.pow(.985,dt);
+ if(b.y<15||b.y>485){b.vy*=-.8;b.y=clamp(b.y,15,485)}
+ if(b.x<15||b.x>785){if(b.y>185&&b.y<315){goal(b.x>400?0:1);return}b.vx*=-.8;b.x=clamp(b.x,15,785)}
+ if(dist(p,b)<p.r+b.r+5&&b.owner!==1){b.owner=0;msg('You have the ball!')}
+ if(dist(e,b)<e.r+b.r+5&&b.owner!==0){b.owner=1;msg('Red has the ball!')}
+ }
+}
+function playerDraw(a,color){
+ ctx.save();ctx.translate(a.x,a.y);
+ if(a.slide>0){ctx.rotate(a.face);ctx.fillStyle=color;ctx.beginPath();ctx.ellipse(0,0,27,13,0,0,Math.PI*2);ctx.fill()}
+ else{ctx.fillStyle='rgba(0,0,0,.22)';ctx.beginPath();ctx.ellipse(3,10,18,9,0,0,7);ctx.fill();ctx.fillStyle=color;ctx.beginPath();ctx.arc(0,0,18,0,7);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,-3,7,0,7);ctx.fill();ctx.fillStyle='#17202b';ctx.beginPath();ctx.arc(2,-4,2.5,0,7);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.cos(a.face)*24,Math.sin(a.face)*24);ctx.stroke()}
+ ctx.restore();
+}
+function draw(){
+ ctx.clearRect(0,0,W,H);ctx.fillStyle='#237c43';ctx.fillRect(0,0,W,H);
+ for(let i=0;i<10;i++){ctx.fillStyle=i%2?'rgba(255,255,255,.025)':'rgba(0,0,0,.035)';ctx.fillRect(i*80,0,80,H)}
+ ctx.strokeStyle='rgba(255,255,255,.8)';ctx.lineWidth=3;ctx.strokeRect(12,12,776,476);ctx.beginPath();ctx.moveTo(400,12);ctx.lineTo(400,488);ctx.stroke();ctx.beginPath();ctx.arc(400,250,70,0,7);ctx.stroke();ctx.strokeRect(12,155,110,190);ctx.strokeRect(678,155,110,190);ctx.strokeRect(12,200,48,100);ctx.strokeRect(740,200,48,100);
+ ctx.fillStyle='#fff';ctx.fillRect(0,190,13,120);ctx.fillRect(787,190,13,120);playerDraw(p,'#1689ff');playerDraw(e,'#ed4c43');
+ ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,7);ctx.fill();ctx.strokeStyle='#222';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#202020';ctx.beginPath();ctx.arc(b.x,b.y,3,0,7);ctx.fill();
+ if(!running){ctx.fillStyle='rgba(0,0,0,.53)';ctx.fillRect(0,0,W,H);ctx.fillStyle='white';ctx.textAlign='center';ctx.font='bold 32px system-ui';ctx.fillText(over?'FULL TIME':'1 VS 1 SOCCER',400,225);ctx.font='18px system-ui';ctx.fillText(over?'Press restart to play again':'Press START to kick off',400,265)}
+ if(paused){ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(0,0,W,H);ctx.fillStyle='white';ctx.textAlign='center';ctx.font='bold 32px system-ui';ctx.fillText('PAUSED',400,250)}
+}
+function frame(t){let dt=Math.min((t-last)/16.67||1,2.5);last=t;if(running&&!paused&&!over){clock+=dt;if(clock>=60){time=Math.max(0,time-dt/60);clock%=60;hud()}controls(dt);opponent(dt);physics(dt);if(time<=0){running=false;over=true;el('status').textContent='FULL TIME';msg(score[0]>score[1]?'YOU WIN!':'TIME UP!')}}draw();requestAnimationFrame(frame)}
+root.querySelectorAll('[data-dir]').forEach(btn=>{let dir=btn.dataset.dir;btn.addEventListener('pointerdown',ev=>{ev.preventDefault();keys[dir]=true;btn.setPointerCapture(ev.pointerId)});['pointerup','pointercancel','lostpointercapture'].forEach(ev=>btn.addEventListener(ev,()=>keys[dir]=false))});
+document.addEventListener('keydown',ev=>{let k=ev.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))ev.preventDefault();keys[k]=true;if(k===' '&&!ev.repeat)shoot(0);if(k==='shift'&&!ev.repeat)tackle()});
+document.addEventListener('keyup',ev=>{keys[ev.key.toLowerCase()]=false});
+el('shoot').addEventListener('pointerdown',ev=>{ev.preventDefault();shoot(0)});el('tackle').addEventListener('pointerdown',ev=>{ev.preventDefault();tackle()});
+el('start').addEventListener('click',start);el('pause').addEventListener('click',()=>{if(running){paused=!paused;el('status').textContent=paused?'PAUSED':'PLAYING'}});
+hud();draw();requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
